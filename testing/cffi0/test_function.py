@@ -1,11 +1,10 @@
 import py
-import pytest
 from cffi import FFI, CDefError
 import math, os, sys
 import ctypes.util
 from cffi.backend_ctypes import CTypesBackend
 from testing.udir import udir
-from testing.support import FdWriteCapture, StdErrCapture
+from testing.support import FdWriteCapture
 from .backend_tests import needs_dlopen_none
 
 try:
@@ -91,8 +90,7 @@ class TestFunction(object):
         """)
         m = ffi.dlopen(lib_m)
         assert m.FOOBAR == 42
-        with pytest.raises(NotImplementedError):
-            m.baz
+        py.test.raises(NotImplementedError, "m.baz")
 
     def test_tlsalloc(self):
         if sys.platform != 'win32':
@@ -113,7 +111,7 @@ class TestFunction(object):
         ffi = FFI(backend=self.Backend())
         ffi.cdef("""
             int fputs(const char *, void *);
-            extern void *stderr;
+            void *stderr;
         """)
         needs_dlopen_none()
         ffi.C = ffi.dlopen(None)
@@ -130,7 +128,7 @@ class TestFunction(object):
         ffi = FFI(backend=self.Backend())
         ffi.cdef("""
             int fputs(char *, void *);
-            extern void *stderr;
+            void *stderr;
         """)
         needs_dlopen_none()
         ffi.C = ffi.dlopen(None)
@@ -147,7 +145,7 @@ class TestFunction(object):
         ffi = FFI(backend=self.Backend())
         ffi.cdef("""
            int fprintf(void *, const char *format, ...);
-           extern void *stderr;
+           void *stderr;
         """)
         needs_dlopen_none()
         ffi.C = ffi.dlopen(None)
@@ -209,7 +207,7 @@ class TestFunction(object):
             py.test.skip("probably no symbol 'stderr' in the lib")
         ffi.cdef("""
             int fputs(const char *, void *);
-            extern void *stderr;
+            void *stderr;
         """)
         needs_dlopen_none()
         ffi.C = ffi.dlopen(None)
@@ -227,31 +225,18 @@ class TestFunction(object):
             def cb():
                 return returnvalue
             fptr = ffi.callback("void(*)(void)", cb)
-            with StdErrCapture() as f:
+            old_stderr = sys.stderr
+            try:
+                sys.stderr = StringIO()
                 returned = fptr()
-            printed = f.getvalue()
+                printed = sys.stderr.getvalue()
+            finally:
+                sys.stderr = old_stderr
             assert returned is None
             if returnvalue is None:
                 assert printed == ''
             else:
                 assert "None" in printed
-
-    def test_callback_returning_struct_three_bytes(self):
-        if self.Backend is CTypesBackend:
-            py.test.skip("not supported with the ctypes backend")
-        ffi = FFI(backend=self.Backend())
-        ffi.cdef("""
-            typedef struct {
-                unsigned char a, b, c;
-            } THREEBYTES;
-        """)
-        def cb():
-            return (12, 34, 56)
-        fptr = ffi.callback("THREEBYTES(*)(void)", cb)
-        tb = fptr()
-        assert tb.a == 12
-        assert tb.b == 34
-        assert tb.c == 56
 
     def test_passing_array(self):
         ffi = FFI(backend=self.Backend())
@@ -269,7 +254,7 @@ class TestFunction(object):
             py.test.skip("probably no symbol 'stdout' in the lib")
         ffi = FFI(backend=self.Backend())
         ffi.cdef("""
-            extern void *stdout;
+            void *stdout;
         """)
         needs_dlopen_none()
         C = ffi.dlopen(None)
@@ -509,7 +494,7 @@ class TestFunction(object):
         ffi.cdef("""
             typedef enum { MYE1, MYE2 } myenum_t;
             double myfunc(double);
-            extern double myvar;
+            double myvar;
             const double myconst;
             #define MYFOO 42
         """)
@@ -520,7 +505,7 @@ class TestFunction(object):
         if self.Backend is CTypesBackend:
             py.test.skip("not with the ctypes backend")
         ffi = FFI(backend=self.Backend())
-        ffi.cdef("int foobar(void); extern int foobaz;")
+        ffi.cdef("int foobar(void); int foobaz;")
         lib = ffi.dlopen(lib_m)
         ffi.dlclose(lib)
         e = py.test.raises(ValueError, getattr, lib, 'foobar')
@@ -533,16 +518,3 @@ class TestFunction(object):
         assert str(e.value).startswith("library '")
         assert str(e.value).endswith("' has already been closed")
         ffi.dlclose(lib)    # does not raise
-
-    def test_passing_large_list(self):
-        if self.Backend is CTypesBackend:
-            py.test.skip("the ctypes backend doesn't support this")
-        ffi = FFI(backend=self.Backend())
-        ffi.cdef("""
-            void getenv(char *);
-        """)
-        needs_dlopen_none()
-        m = ffi.dlopen(None)
-        arg = [b"F", b"O", b"O"] + [b"\x00"] * 20000000
-        x = m.getenv(arg)
-        assert x is None
