@@ -1,17 +1,9 @@
 #if PY_VERSION_HEX >= 0x03080000
-# define HAVE_PYINTERPSTATE_GETDICT
+# define Py_BUILD_CORE
+/* for access to the fields of PyInterpreterState */
+#  include "internal/pycore_pystate.h"
+# undef Py_BUILD_CORE
 #endif
-
-
-static PyObject *_current_interp_key(void)
-{
-    PyInterpreterState *interp = PyThreadState_GET()->interp;
-#ifdef HAVE_PYINTERPSTATE_GETDICT
-    return PyInterpreterState_GetDict(interp);   /* shared reference */
-#else
-    return interp->modules;
-#endif
-}
 
 static PyObject *_get_interpstate_dict(void)
 {
@@ -22,9 +14,8 @@ static PyObject *_get_interpstate_dict(void)
     */
     static PyObject *attr_name = NULL;
     PyThreadState *tstate;
-    PyObject *d, *interpdict;
+    PyObject *d, *builtins;
     int err;
-    PyInterpreterState *interp;
 
     tstate = PyThreadState_GET();
     if (tstate == NULL) {
@@ -32,13 +23,8 @@ static PyObject *_get_interpstate_dict(void)
         return NULL;
     }
 
-    interp = tstate->interp;
-#ifdef HAVE_PYINTERPSTATE_GETDICT
-    interpdict = PyInterpreterState_GetDict(interp);   /* shared reference */
-#else
-    interpdict = interp->builtins;
-#endif
-    if (interpdict == NULL) {
+    builtins = tstate->interp->builtins;
+    if (builtins == NULL) {
         /* subinterpreter was cleared already, or is being cleared right now,
            to a point that is too much for us to continue */
         return NULL;
@@ -52,13 +38,13 @@ static PyObject *_get_interpstate_dict(void)
             goto error;
     }
 
-    d = PyDict_GetItem(interpdict, attr_name);
+    d = PyDict_GetItem(builtins, attr_name);
     if (d == NULL) {
         d = PyDict_New();
         if (d == NULL)
             goto error;
-        err = PyDict_SetItem(interpdict, attr_name, d);
-        Py_DECREF(d);   /* if successful, there is one ref left in interpdict */
+        err = PyDict_SetItem(builtins, attr_name, d);
+        Py_DECREF(d);    /* if successful, there is one ref left in builtins */
         if (err < 0)
             goto error;
     }
@@ -177,7 +163,7 @@ static int _update_cache_to_call_python(struct _cffi_externpy_s *externpy)
     if (infotuple == NULL)
         return 3;    /* no ffi.def_extern() from this subinterpreter */
 
-    new1 = _current_interp_key();
+    new1 = PyThreadState_GET()->interp->modules;
     Py_INCREF(new1);
     Py_INCREF(infotuple);
     old1 = (PyObject *)externpy->reserved1;
@@ -266,7 +252,7 @@ static void cffi_call_python(struct _cffi_externpy_s *externpy, char *args)
     }
     else {
         PyGILState_STATE state = gil_ensure();
-        if (externpy->reserved1 != _current_interp_key()) {
+        if (externpy->reserved1 != PyThreadState_GET()->interp->modules) {
             /* Update the (reserved1, reserved2) cache.  This will fail
                if we didn't call @ffi.def_extern() in this particular
                subinterpreter. */
