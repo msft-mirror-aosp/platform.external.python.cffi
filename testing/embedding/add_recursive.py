@@ -3,7 +3,7 @@ import cffi
 ffi = cffi.FFI()
 
 ffi.embedding_api("""
-    extern int (*my_callback)(int);
+    int (*my_callback)(int);
     int add_rec(int, int);
 """)
 
