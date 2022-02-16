@@ -1,7 +1,6 @@
 import py
-import pytest
 import platform
-import sys, ctypes, ctypes.util
+import sys, ctypes
 from cffi import FFI, CDefError, FFIError, VerificationMissing
 from testing.support import *
 
@@ -12,8 +11,8 @@ SIZE_OF_PTR   = ctypes.sizeof(ctypes.c_void_p)
 SIZE_OF_WCHAR = ctypes.sizeof(ctypes.c_wchar)
 
 def needs_dlopen_none():
-    if sys.platform == 'win32' and not ctypes.util.find_library('c'):
-        py.test.skip("dlopen(None) cannot work on Windows with this runtime")
+    if sys.platform == 'win32' and sys.version_info >= (3,):
+        py.test.skip("dlopen(None) cannot work on Windows for Python 3")
 
 
 class BackendTests:
@@ -113,14 +112,10 @@ class BackendTests:
         p[9] = 43
         assert p[0] == 42
         assert p[9] == 43
-        with pytest.raises(IndexError):
-            p[10]
-        with pytest.raises(IndexError):
-            p[10] = 44
-        with pytest.raises(IndexError):
-            p[-1]
-        with pytest.raises(IndexError):
-            p[-1] = 44
+        py.test.raises(IndexError, "p[10]")
+        py.test.raises(IndexError, "p[10] = 44")
+        py.test.raises(IndexError, "p[-1]")
+        py.test.raises(IndexError, "p[-1] = 44")
 
     def test_new_array_args(self):
         ffi = FFI(backend=self.Backend())
@@ -145,21 +140,18 @@ class BackendTests:
         ffi = FFI(backend=self.Backend())
         p = ffi.new("int[]", 10)     # a single integer is the length
         assert p[9] == 0
-        with pytest.raises(IndexError):
-            p[10]
+        py.test.raises(IndexError, "p[10]")
         #
         py.test.raises(TypeError, ffi.new, "int[]")
         #
         p = ffi.new("int[]", [-6, -7])    # a list is all the items, like C
         assert p[0] == -6
         assert p[1] == -7
-        with pytest.raises(IndexError):
-            p[2]
+        py.test.raises(IndexError, "p[2]")
         assert repr(p) == "<cdata 'int[]' owning %d bytes>" % (2*SIZE_OF_INT)
         #
         p = ffi.new("int[]", 0)
-        with pytest.raises(IndexError):
-            p[0]
+        py.test.raises(IndexError, "p[0]")
         py.test.raises(ValueError, ffi.new, "int[]", -1)
         assert repr(p) == "<cdata 'int[]' owning 0 bytes>"
 
@@ -267,8 +259,7 @@ class BackendTests:
         p[2][3] = 33
         assert p[0][0] == 10
         assert p[2][3] == 33
-        with pytest.raises(IndexError):
-            p[1][-1]
+        py.test.raises(IndexError, "p[1][-1]")
 
     def test_constructor_array_of_array(self):
         ffi = FFI(backend=self.Backend())
@@ -395,8 +386,7 @@ class BackendTests:
         n = ffi.new("int*", 99)
         p = ffi.new("int*[]", [n])
         assert p[0][0] == 99
-        with pytest.raises(TypeError):
-            p[0] = None
+        py.test.raises(TypeError, "p[0] = None")
         p[0] = ffi.NULL
         assert p[0] == ffi.NULL
 
@@ -432,15 +422,13 @@ class BackendTests:
         assert s.a == s.b == s.c == 0
         s.b = -23
         assert s.b == -23
-        with pytest.raises(OverflowError):
-            s.b = 32768
+        py.test.raises(OverflowError, "s.b = 32768")
         #
         s = ffi.new("struct foo*", [-2, -3])
         assert s.a == -2
         assert s.b == -3
         assert s.c == 0
-        with pytest.raises((AttributeError, TypeError)):
-            del s.a
+        py.test.raises((AttributeError, TypeError), "del s.a")
         assert repr(s) == "<cdata 'struct foo *' owning %d bytes>" % (
             SIZE_OF_INT + 2 * SIZE_OF_SHORT)
         #
@@ -462,10 +450,8 @@ class BackendTests:
         assert s[0].a == s[0].b == s[0].c == 0
         s[0].b = -23
         assert s[0].b == s.b == -23
-        with pytest.raises(OverflowError):
-            s[0].b = -32769
-        with pytest.raises(IndexError):
-            s[1]
+        py.test.raises(OverflowError, "s[0].b = -32769")
+        py.test.raises(IndexError, "s[1]")
 
     def test_struct_opaque(self):
         ffi = FFI(backend=self.Backend())
@@ -525,13 +511,11 @@ class BackendTests:
         u.b = -23
         assert u.b == -23
         assert u.a != 0
-        with pytest.raises(OverflowError):
-            u.b = 32768
+        py.test.raises(OverflowError, "u.b = 32768")
         #
         u = ffi.new("union foo*", [-2])
         assert u.a == -2
-        with pytest.raises((AttributeError, TypeError)):
-            del u.a
+        py.test.raises((AttributeError, TypeError), "del u.a")
         assert repr(u) == "<cdata 'union foo *' owning %d bytes>" % SIZE_OF_INT
 
     def test_union_opaque(self):
@@ -607,8 +591,7 @@ class BackendTests:
         p[3] = b'\x00'
         assert ffi.string(p) == b"hel"
         assert ffi.string(p, 2) == b"he"
-        with pytest.raises(IndexError):
-            p[7] = b'X'
+        py.test.raises(IndexError, "p[7] = b'X'")
         #
         a = ffi.new("char[]", b"hello\x00world")
         assert len(a) == 12
@@ -632,8 +615,7 @@ class BackendTests:
         p[3] = u+'\x00'
         assert ffi.string(p) == u+"hel"
         assert ffi.string(p, 123) == u+"hel"
-        with pytest.raises(IndexError):
-            p[7] = u+'X'
+        py.test.raises(IndexError, "p[7] = u+'X'")
         #
         a = ffi.new("wchar_t[]", u+"hello\x00world")
         assert len(a) == 12
@@ -651,8 +633,7 @@ class BackendTests:
         s = ffi.new("struct foo*", [t])
         assert type(s.name) not in (bytes, str, unicode)
         assert ffi.string(s.name) == b"testing"
-        with pytest.raises(TypeError):
-            s.name = None
+        py.test.raises(TypeError, "s.name = None")
         s.name = ffi.NULL
         assert s.name == ffi.NULL
 
@@ -676,21 +657,18 @@ class BackendTests:
         a = ffi.new("int[]", [10, 11, 12])
         p = ffi.new("void **", a)
         vp = p[0]
-        with pytest.raises(TypeError):
-            vp[0]
+        py.test.raises(TypeError, "vp[0]")
         py.test.raises(TypeError, ffi.new, "short **", a)
         #
         ffi.cdef("struct foo { void *p; int *q; short *r; };")
         s = ffi.new("struct foo *")
         s.p = a    # works
         s.q = a    # works
-        with pytest.raises(TypeError):
-            s.r = a    # fails
+        py.test.raises(TypeError, "s.r = a")    # fails
         b = ffi.cast("int *", a)
         s.p = b    # works
         s.q = b    # works
-        with pytest.raises(TypeError):
-            s.r = b    # fails
+        py.test.raises(TypeError, "s.r = b")    # fails
 
     def test_functionptr_simple(self):
         ffi = FFI(backend=self.Backend())
@@ -709,8 +687,7 @@ class BackendTests:
         q = ffi.new("int(**)(int)", p)
         assert repr(q) == "<cdata 'int(* *)(int)' owning %d bytes>" % (
             SIZE_OF_PTR)
-        with pytest.raises(TypeError):
-            q(43)
+        py.test.raises(TypeError, "q(43)")
         res = q[0](43)
         assert res == 44
         q = ffi.cast("int(*)(int)", p)
@@ -935,14 +912,10 @@ class BackendTests:
         assert s.e == 4294967295
         assert s[0].e == 4294967295
         s.e = s.e
-        with pytest.raises(TypeError):
-            s.e = 'B'
-        with pytest.raises(TypeError):
-            s.e = '2'
-        with pytest.raises(TypeError):
-            s.e = '#2'
-        with pytest.raises(TypeError):
-            s.e = '#7'
+        py.test.raises(TypeError, "s.e = 'B'")
+        py.test.raises(TypeError, "s.e = '2'")
+        py.test.raises(TypeError, "s.e = '#2'")
+        py.test.raises(TypeError, "s.e = '#7'")
 
     def test_enum_non_contiguous(self):
         ffi = FFI(backend=self.Backend())
@@ -977,14 +950,11 @@ class BackendTests:
         ffi = FFI(backend=self.Backend())
         ffi.cdef("struct foo { int a, b; };")
         s = ffi.new("struct foo[1]")
-        with pytest.raises(AttributeError):
-            s.b
-        with pytest.raises(AttributeError):
-            s.b = 412
+        py.test.raises(AttributeError, 's.b')
+        py.test.raises(AttributeError, 's.b = 412')
         s[0].b = 412
         assert s[0].b == 412
-        with pytest.raises(IndexError):
-            s[1]
+        py.test.raises(IndexError, 's[1]')
 
     def test_pointer_to_array(self):
         ffi = FFI(backend=self.Backend())
@@ -1041,23 +1011,17 @@ class BackendTests:
         assert ffi.sizeof("struct foo") == 8
         s = ffi.new("struct foo *")
         s.a = 511
-        with pytest.raises(OverflowError):
-            s.a = 512
-        with pytest.raises(OverflowError):
-            s[0].a = 512
+        py.test.raises(OverflowError, "s.a = 512")
+        py.test.raises(OverflowError, "s[0].a = 512")
         assert s.a == 511
         s.a = -512
-        with pytest.raises(OverflowError):
-            s.a = -513
-        with pytest.raises(OverflowError):
-            s[0].a = -513
+        py.test.raises(OverflowError, "s.a = -513")
+        py.test.raises(OverflowError, "s[0].a = -513")
         assert s.a == -512
         s.c = 3
         assert s.c == 3
-        with pytest.raises(OverflowError):
-            s.c = 4
-        with pytest.raises(OverflowError):
-            s[0].c = 4
+        py.test.raises(OverflowError, "s.c = 4")
+        py.test.raises(OverflowError, "s[0].c = 4")
         s.c = -4
         assert s.c == -4
 
@@ -1241,7 +1205,7 @@ class BackendTests:
             py.test.skip(str(e))
         f.write(ffi.buffer(a, 1000 * ffi.sizeof("int")))
         f.seek(0)
-        assert f.read() == arraytostring(array.array('i', range(1000)))
+        assert f.read() == array.array('i', range(1000)).tostring()
         f.seek(0)
         b = ffi.new("int[]", 1005)
         f.readinto(ffi.buffer(b, 1000 * ffi.sizeof("int")))
@@ -1260,7 +1224,7 @@ class BackendTests:
             py.test.skip(str(e))
         f.write(ffi.buffer(a, 1000 * ffi.sizeof("int")))
         f.seek(0)
-        assert f.read() == arraytostring(array.array('i', range(1000)))
+        assert f.read() == array.array('i', range(1000)).tostring()
         f.seek(0)
         b = ffi.new("int[]", 1005)
         f.readinto(ffi.buffer(b, 1000 * ffi.sizeof("int")))
@@ -1315,8 +1279,7 @@ class BackendTests:
         p = ffi.new("struct foo_s *", 10)     # a single integer is the length
         assert p.len == 0
         assert p.data[9] == 0
-        with pytest.raises(IndexError):
-            p.data[10]
+        py.test.raises(IndexError, "p.data[10]")
 
     def test_ffi_typeof_getcname(self):
         ffi = FFI(backend=self.Backend())
