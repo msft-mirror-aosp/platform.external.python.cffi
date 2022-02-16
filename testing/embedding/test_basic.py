@@ -63,8 +63,8 @@ class EmbeddingTests:
         output = popen.stdout.read()
         err = popen.wait()
         if err:
-            raise OSError(("popen failed with exit code %r: %r\n\n%s" % (
-                err, args, output)).rstrip())
+            raise OSError("popen failed with exit code %r: %r" % (
+                err, args))
         print(output.rstrip())
         return output
 
@@ -172,8 +172,7 @@ if sys.platform == 'win32':
         result = popen.stdout.read()
         err = popen.wait()
         if err:
-            raise OSError("%r failed with exit code %r" % (
-                os.path.join(path, executable_name), err))
+            raise OSError("%r failed with exit code %r" % (name, err))
         return result
 
 
@@ -206,9 +205,3 @@ class TestBasic(EmbeddingTests):
         self.compile('add1-test', [initerror_cffi])
         output = self.execute('add1-test')
         assert output == "got: 0 0\n"    # plus lots of info to stderr
-
-    def test_embedding_with_unicode(self):
-        withunicode_cffi = self.prepare_module('withunicode')
-        self.compile('add1-test', [withunicode_cffi])
-        output = self.execute('add1-test')
-        assert output == "255\n4660\n65244\ngot: 0 0\n"

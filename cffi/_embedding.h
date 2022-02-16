@@ -145,7 +145,6 @@ static int _cffi_initialize_python(void)
     int result;
     PyGILState_STATE state;
     PyObject *pycode=NULL, *global_dict=NULL, *x;
-    PyObject *builtins;
 
     state = PyGILState_Ensure();
 
@@ -170,10 +169,8 @@ static int _cffi_initialize_python(void)
     global_dict = PyDict_New();
     if (global_dict == NULL)
         goto error;
-    builtins = PyEval_GetBuiltins();
-    if (builtins == NULL)
-        goto error;
-    if (PyDict_SetItemString(global_dict, "__builtins__", builtins) < 0)
+    if (PyDict_SetItemString(global_dict, "__builtins__",
+                             PyThreadState_GET()->interp->builtins) < 0)
         goto error;
     x = PyEval_EvalCode(
 #if PY_MAJOR_VERSION < 3
@@ -224,7 +221,7 @@ static int _cffi_initialize_python(void)
 
         if (f != NULL && f != Py_None) {
             PyFile_WriteString("\nFrom: " _CFFI_MODULE_NAME
-                               "\ncompiled with cffi version: 1.15.0"
+                               "\ncompiled with cffi version: 1.12.2"
                                "\n_cffi_backend module: ", f);
             modules = PyImport_GetModuleDict();
             mod = PyDict_GetItemString(modules, "_cffi_backend");
@@ -246,9 +243,7 @@ static int _cffi_initialize_python(void)
     goto done;
 }
 
-#if PY_VERSION_HEX < 0x03080000
 PyAPI_DATA(char *) _PyParser_TokenNames[];  /* from CPython */
-#endif
 
 static int _cffi_carefully_make_gil(void)
 {
@@ -268,33 +263,23 @@ static int _cffi_carefully_make_gil(void)
        So we use a global variable as a simple spin lock.  This global
        variable must be from 'libpythonX.Y.so', not from this
        cffi-based extension module, because it must be shared from
-       different cffi-based extension modules.
-
-       In Python < 3.8, we choose
+       different cffi-based extension modules.  We choose
        _PyParser_TokenNames[0] as a completely arbitrary pointer value
        that is never written to.  The default is to point to the
        string "ENDMARKER".  We change it temporarily to point to the
        next character in that string.  (Yes, I know it's REALLY
        obscure.)
-
-       In Python >= 3.8, this string array is no longer writable, so
-       instead we pick PyCapsuleType.tp_version_tag.  We can't change
-       Python < 3.8 because someone might use a mixture of cffi
-       embedded modules, some of which were compiled before this file
-       changed.
     */
 
 #ifdef WITH_THREAD
-# if PY_VERSION_HEX < 0x03080000
     char *volatile *lock = (char *volatile *)_PyParser_TokenNames;
-    char *old_value, *locked_value;
+    char *old_value;
 
     while (1) {    /* spin loop */
         old_value = *lock;
-        locked_value = old_value + 1;
         if (old_value[0] == 'E') {
             assert(old_value[1] == 'N');
-            if (cffi_compare_and_swap(lock, old_value, locked_value))
+            if (cffi_compare_and_swap(lock, old_value, old_value + 1))
                 break;
         }
         else {
@@ -305,51 +290,23 @@ static int _cffi_carefully_make_gil(void)
                this is only run at start-up anyway. */
         }
     }
-# else
-    int volatile *lock = (int volatile *)&PyCapsule_Type.tp_version_tag;
-    int old_value, locked_value;
-    assert(!(PyCapsule_Type.tp_flags & Py_TPFLAGS_HAVE_VERSION_TAG));
-
-    while (1) {    /* spin loop */
-        old_value = *lock;
-        locked_value = -42;
-        if (old_value == 0) {
-            if (cffi_compare_and_swap(lock, old_value, locked_value))
-                break;
-        }
-        else {
-            assert(old_value == locked_value);
-            /* should ideally do a spin loop instruction here, but
-               hard to do it portably and doesn't really matter I
-               think: PyEval_InitThreads() should be very fast, and
-               this is only run at start-up anyway. */
-        }
-    }
-# endif
 #endif
 
     /* call Py_InitializeEx() */
-    if (!Py_IsInitialized()) {
-        _cffi_py_initialize();
-#if PY_VERSION_HEX < 0x03070000
-        PyEval_InitThreads();
-#endif
-        PyEval_SaveThread();  /* release the GIL */
-        /* the returned tstate must be the one that has been stored into the
-           autoTLSkey by _PyGILState_Init() called from Py_Initialize(). */
-    }
-    else {
-#if PY_VERSION_HEX < 0x03070000
-        /* PyEval_InitThreads() is always a no-op from CPython 3.7 */
-        PyGILState_STATE state = PyGILState_Ensure();
+    {
+        PyGILState_STATE state = PyGILState_UNLOCKED;
+        if (!Py_IsInitialized())
+            _cffi_py_initialize();
+        else
+            state = PyGILState_Ensure();
+
         PyEval_InitThreads();
         PyGILState_Release(state);
-#endif
     }
 
 #ifdef WITH_THREAD
     /* release the lock */
-    while (!cffi_compare_and_swap(lock, locked_value, old_value))
+    while (!cffi_compare_and_swap(lock, old_value + 1, old_value))
         ;
 #endif
 
@@ -368,11 +325,11 @@ PyMODINIT_FUNC _CFFI_PYTHON_STARTUP_FUNC(const void *[]);   /* forward */
 
 static struct _cffi_pypy_init_s {
     const char *name;
-    void *func;    /* function pointer */
+    void (*func)(const void *[]);
     const char *code;
 } _cffi_pypy_init = {
     _CFFI_MODULE_NAME,
-    _CFFI_PYTHON_STARTUP_FUNC,
+    (void(*)(const void *[]))_CFFI_PYTHON_STARTUP_FUNC,
     _CFFI_PYTHON_STARTUP_CODE,
 };
 
