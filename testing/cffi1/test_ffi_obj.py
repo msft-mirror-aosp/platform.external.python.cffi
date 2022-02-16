@@ -1,5 +1,4 @@
 import py, sys
-import pytest
 import _cffi_backend as _cffi1_backend
 
 
@@ -86,12 +85,9 @@ def test_ffi_NULL():
 
 def test_ffi_no_attr():
     ffi = _cffi1_backend.FFI()
-    with pytest.raises(AttributeError):
-        ffi.no_such_name
-    with pytest.raises(AttributeError):
-        ffi.no_such_name = 42
-    with pytest.raises(AttributeError):
-        del ffi.no_such_name
+    py.test.raises(AttributeError, "ffi.no_such_name")
+    py.test.raises(AttributeError, "ffi.no_such_name = 42")
+    py.test.raises(AttributeError, "del ffi.no_such_name")
 
 def test_ffi_string():
     ffi = _cffi1_backend.FFI()
