@@ -103,7 +103,7 @@ void ffi_prep_args(char *stack, extended_cif *ecif)
 	    }
 	}
 #ifdef _WIN64
-      else if (z != 1 && z != 2 && z != 4 && z != 8)
+      else if (z > 8)
         {
           /* On Win64, if a single argument takes more than 8 bytes,
              then it is always passed by reference. */
@@ -144,11 +144,9 @@ ffi_status ffi_prep_cif_machdep(ffi_cif *cif)
       /* MSVC returns small structures in registers.  Put in cif->flags
          the value FFI_TYPE_STRUCT only if the structure is big enough;
          otherwise, put the 4- or 8-bytes integer type. */
-      if (cif->rtype->size == 1 ||
-          cif->rtype->size == 2 ||
-          cif->rtype->size == 4)
+      if (cif->rtype->size <= 4)
         cif->flags = FFI_TYPE_INT;
-      else if (cif->rtype->size == 8)
+      else if (cif->rtype->size <= 8)
         cif->flags = FFI_TYPE_SINT64;
       else
         cif->flags = FFI_TYPE_STRUCT;
@@ -289,11 +287,15 @@ ffi_closure_SYSV (ffi_closure *closure, char *argp)
 	    _asm fld DWORD PTR [eax] ;
 //      asm ("flds (%0)" : : "r" (resp) : "st" );
     }
-  else if (rtype == FFI_TYPE_DOUBLE || rtype == FFI_TYPE_LONGDOUBLE)
+  else if (rtype == FFI_TYPE_DOUBLE)
     {
 	    _asm mov eax, resp ;
 	    _asm fld QWORD PTR [eax] ;
 //      asm ("fldl (%0)" : : "r" (resp) : "st", "st(1)" );
+    }
+  else if (rtype == FFI_TYPE_LONGDOUBLE)
+    {
+//      asm ("fldt (%0)" : : "r" (resp) : "st", "st(1)" );
     }
   else if (rtype == FFI_TYPE_SINT64)
     {
@@ -305,10 +307,6 @@ ffi_closure_SYSV (ffi_closure *closure, char *argp)
 //	   : : "r"(resp)
 //	   : "eax", "edx");
     }
-  else if (rtype == FFI_TYPE_STRUCT)
-    {
-	    _asm mov eax, resp ;
-    }
 #else
   /* now, do a generic return based on the value of rtype */
   if (rtype == FFI_TYPE_INT)
@@ -319,9 +317,13 @@ ffi_closure_SYSV (ffi_closure *closure, char *argp)
     {
       asm ("flds (%0)" : : "r" (resp) : "st" );
     }
-  else if (rtype == FFI_TYPE_DOUBLE || rtype == FFI_TYPE_LONGDOUBLE)
+  else if (rtype == FFI_TYPE_DOUBLE)
     {
       asm ("fldl (%0)" : : "r" (resp) : "st", "st(1)" );
+    }
+  else if (rtype == FFI_TYPE_LONGDOUBLE)
+    {
+      asm ("fldt (%0)" : : "r" (resp) : "st", "st(1)" );
     }
   else if (rtype == FFI_TYPE_SINT64)
     {
@@ -329,10 +331,6 @@ ffi_closure_SYSV (ffi_closure *closure, char *argp)
 	   "movl 4(%0),%%edx" 
 	   : : "r"(resp)
 	   : "eax", "edx");
-    }
-  else if (rtype == FFI_TYPE_STRUCT)
-    {
-      asm ("movl %0,%%eax" : : "r" (resp) : "eax");
     }
 #endif
 #endif
@@ -342,8 +340,6 @@ ffi_closure_SYSV (ffi_closure *closure, char *argp)
      result types except for floats; we have to 'mov xmm0, rax' in the
      caller to correct this.
   */
-  if (rtype == FFI_TYPE_STRUCT)
-      return resp;
   return *(void **)resp;
 #endif
 }
@@ -382,7 +378,7 @@ ffi_prep_incoming_args_SYSV(char *stack, void **rvalue,
       /* because we're little endian, this is what it turns into.   */
 
 #ifdef _WIN64
-      if (z != 1 && z != 2 && z != 4 && z != 8)
+      if (z > 8)
         {
           /* On Win64, if a single argument takes more than 8 bytes,
              then it is always passed by reference. */
@@ -450,11 +446,6 @@ ffi_prep_closure_loc (ffi_closure* closure,
       (cif->arg_types[3]->type == FFI_TYPE_FLOAT
        || cif->arg_types[3]->type == FFI_TYPE_DOUBLE))
     mask |= 8;
-
-  /* if we return a non-small struct, then the first argument is a pointer
-   * to the return area, and all real arguments are shifted by one */
-  if (cif->flags == FFI_TYPE_STRUCT)
-    mask = (mask & ~8) << 1;
 
   /* 41 BB ----         mov         r11d,mask */
   BYTES("\x41\xBB"); INT(mask);
