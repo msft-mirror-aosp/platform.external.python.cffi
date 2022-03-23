@@ -8,7 +8,7 @@ in the doc/ subdirectory.
 Download
 --------
 
-[Download page](https://foss.heptapod.net/pypy/cffi/-/tags)
+[Download page](https://bitbucket.org/cffi/cffi/downloads)
 
 Contact
 -------

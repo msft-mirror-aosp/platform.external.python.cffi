@@ -43,13 +43,12 @@ static PyObject *ffi_dlopen(PyObject *self, PyObject *args)
     const char *modname;
     PyObject *temp, *result = NULL;
     void *handle;
-    int auto_close;
 
-    handle = b_do_dlopen(args, &modname, &temp, &auto_close);
+    handle = b_do_dlopen(args, &modname, &temp);
     if (handle != NULL)
     {
         result = (PyObject *)lib_internal_new((FFIObject *)self,
-                                              modname, handle, auto_close);
+                                              modname, handle);
     }
     Py_XDECREF(temp);
     return result;
