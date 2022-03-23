@@ -117,10 +117,7 @@ ffi_status ffi_prep_cif(/*@out@*/ /*@partial@*/ ffi_cif *cif,
   /* Make space for the return structure pointer */
   if (cif->rtype->type == FFI_TYPE_STRUCT
 #ifdef _WIN32
-      && (cif->rtype->size != 1)  /* MSVC returns small structs in registers */
-      && (cif->rtype->size != 2)
-      && (cif->rtype->size != 4)
-      && (cif->rtype->size != 8)
+      && (cif->rtype->size > 8)  /* MSVC returns small structs in registers */
 #endif
 #ifdef SPARC
       && (cif->abi != FFI_V9 || cif->rtype->size > 32)
