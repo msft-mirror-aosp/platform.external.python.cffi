@@ -141,11 +141,7 @@ class FFI(object):
         linked to a particular library, just like C headers; in the
         library we only look for the actual (untyped) symbols.
         """
-        if not (isinstance(name, basestring) or
-                name is None or
-                isinstance(name, self.CData)):
-            raise TypeError("dlopen(name): name must be a file name, None, "
-                            "or an already-opened 'void *' handle")
+        assert isinstance(name, basestring) or name is None
         with self._lock:
             lib, function_cache = _make_ffi_library(self, name, flags)
             self._function_caches.append(function_cache)
@@ -803,9 +799,9 @@ class FFI(object):
 
 def _load_backend_lib(backend, name, flags):
     import os
-    if not isinstance(name, basestring):
-        if sys.platform != "win32" or name is not None:
-            return backend.load_library(name, flags)
+    if name is None:
+        if sys.platform != "win32":
+            return backend.load_library(None, flags)
         name = "c"    # Windows: load_library(None) fails, but this works
                       # on Python 2 (backward compatibility hack only)
     first_error = None
@@ -939,7 +935,7 @@ def _make_ffi_library(ffi, libname, flags):
             backendlib.close_lib()
             self.__dict__.clear()
     #
-    if isinstance(libname, basestring):
+    if libname is not None:
         try:
             if not isinstance(libname, str):    # unicode, on Python 2
                 libname = libname.encode('utf-8')
